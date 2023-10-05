@@ -21,6 +21,17 @@ from datetime import datetime, timedelta # Import datetime and timedelta from th
 from pynput import mouse, keyboard # Import mouse and keyboard listeners from the pynput library to detect user activity
 import threading # Import the threading library to run multiple threads concurrently
 import time # Import the time library to control the sleep state of the while loop in track_active_window function
+import logging  # Import the logging module
+import os  # Import the os module to handle file paths
+
+
+# Creating directories if they don't exist
+os.makedirs('report', exist_ok=True)
+os.makedirs('logs', exist_ok=True)
+
+# Configuring logging to write logs to the 'logs' folder
+logging.basicConfig(filename='logs/app_time_tracker.log', level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Globals to track activity and data
 last_activity_time = datetime.now()
@@ -36,8 +47,27 @@ def save_to_csv(data, filename):
     :param data: List of dictionaries containing tracking data.
     :param filename: String, name of the file to save data.
     """
-    df = pd.DataFrame(data)
-    df.to_csv(filename, index=False)
+    try:
+        # Check if the file already exists
+        if os.path.exists(filename):
+            # If it does, read the existing data
+            existing_data = pd.read_csv(filename)
+            # Convert the existing data to a DataFrame
+            df_existing = pd.DataFrame(existing_data)
+            # Convert the new data to a DataFrame
+            df_new = pd.DataFrame(data)
+            # Concatenate the existing and new data
+            df = pd.concat([df_existing, df_new], ignore_index=True)
+        else:
+            # If the file doesn't exist, simply convert the new data to a DataFrame
+            df = pd.DataFrame(data)
+        
+        # Save (or overwrite) the CSV file
+        df.to_csv(filename, index=False)
+    except Exception as e:
+        # Log any error encountered during the saving process
+        logging.error(f"Failed to save data to CSV. Error: {str(e)}")
+
 
 def get_csv_filename():
     """
@@ -45,8 +75,11 @@ def get_csv_filename():
 
     :return: String, formatted filename.
     """
+    # Generating a filename using the current date
     date_str = datetime.now().strftime("%Y%m%d")
-    return f'application_usage_{date_str}.csv'
+    # Returning the filename with path to 'report' folder
+    return f'report/application_usage_{date_str}.csv'
+
 
 def extract_app_name(title):
     """
@@ -55,11 +88,33 @@ def extract_app_name(title):
     :param title: String, the window title.
     :return: String, estimated application name.
     """
+    # Define browser tags and corresponding application names
+    browser_tags = {
+        " - Google Chrome": "Google Chrome", 
+        " - Mozilla Firefox": "Mozilla Firefox", 
+        " - Microsoft Edge": "Microsoft Edge"
+    }
+    
+    # Check for browser tags and return the corresponding application name if found
+    for tag, app_name in browser_tags.items():
+        if tag in title:
+            return app_name
+    
+    # Special handling for specific applications
+    if "Excel" in title:
+        return "Microsoft Excel"
+    elif "Word" in title:
+        return "Microsoft Word"
+    # Add more special cases as needed
+    
+    # General handling for other titles
     parts = title.split(' - ')
     if len(parts) > 1:
-        return parts[-1]  
+        # Check if the last part is empty and return the second-last if it is
+        return parts[-1] if parts[-1].strip() != "" else parts[-2]  
     else:
         return title  
+
 
 def format_timedelta(td):
     """
@@ -95,26 +150,29 @@ def track_active_window():
     global last_activity_time, data, active_window_name, start_time
     
     try:
-        # Main loop to keep checking the active window title
+        # Infinite loop to continually track active window
         while True:
-            # Get the title of the currently active window
-            new_window_name = gw.getActiveWindow().title
+            # Safely getting the title of the currently active window
+            active_window = gw.getActiveWindow()
+            if active_window is not None:
+                new_window_name = active_window.title
+            else:
+                new_window_name = "Unknown"  # Handle as per your application's need
             
-            # Check if user has been inactive for more than 5 minutes
+            # Checking for inactivity (no activity for more than 5 minutes)
             if datetime.now() - last_activity_time > timedelta(minutes=5) and active_window_name != "Idle":
-                new_window_name = "Idle"  # Set the window name as "Idle"
-                start_time = last_activity_time + timedelta(minutes=5)  # Set the start time for idle status
+                new_window_name = "Idle"  
+                start_time = last_activity_time + timedelta(minutes=5) 
             
-            # Check if the active window has changed or if idle status should be logged
+            # Checking if the active window has changed or if idle status should be logged
             if active_window_name != new_window_name or (active_window_name == "Idle" and new_window_name == "Idle"):
-                end_time = datetime.now()  # Note the end time of the previous activity
+                end_time = datetime.now()
                 if active_window_name != "":
-                    # Calculate the total time spent on the previous activity
                     total_time = end_time - start_time
                     formatted_total_time = format_timedelta(total_time)
                     readable_total_time = format_readable_timedelta(total_time)
                     
-                    # Append the data to the global list
+                    # Appending data to the global data list
                     data.append({
                         "Application": extract_app_name(active_window_name),
                         "Title": active_window_name,
@@ -124,28 +182,27 @@ def track_active_window():
                         "Readable Total Time": readable_total_time
                     })
                     
-                    # Save the data to a CSV file
+                    # Saving the data to a CSV file
                     save_to_csv(data, get_csv_filename())
                     
-                    # Update the start time for the next activity
                     start_time = end_time
                 
-                # Update the active window name if it has changed
+                # Updating the active window name if it has changed
                 if active_window_name != new_window_name:
                     active_window_name = new_window_name
                 
-            # Pause the loop for 1 second before checking the active window again
+            # Pausing the loop for 1 second before checking the active window again
             time.sleep(1)
             
-    # Handle the KeyboardInterrupt exception to gracefully end the loop and save data when script is terminated
     except KeyboardInterrupt:
+        # Handling a manual interrupt of the script
         end_time = datetime.now()
         if active_window_name != "":
             total_time = end_time - start_time
             formatted_total_time = format_timedelta(total_time)
             readable_total_time = format_readable_timedelta(total_time)
             
-            # Append the last activity data to the list
+            # Appending the last activity data to the list
             data.append({
                 "Application": extract_app_name(active_window_name),
                 "Title": active_window_name,
@@ -155,10 +212,18 @@ def track_active_window():
                 "Readable Total Time": readable_total_time
             })
 
-        # Save the final data to a CSV file
+        # Saving the final data to a CSV file
         save_to_csv(data, get_csv_filename())
+        
+    except Exception as e:
+        # Logging unexpected errors during window tracking
+        logging.error(f"Unexpected error in track_active_window. Error: {str(e)}")
+
 
 def on_activity(*args):
+    """
+    Update the last activity time whenever mouse or keyboard activity is detected.
+    """
     global last_activity_time
     last_activity_time = datetime.now()
 
