@@ -150,73 +150,72 @@ def track_active_window():
     global last_activity_time, data, active_window_name, start_time
     
     try:
-        # Infinite loop to continually track active window
+        # Continuous loop to keep the tracking active at all times
         while True:
-            # Safely getting the title of the currently active window
+            # Get the currently active window's title
             active_window = gw.getActiveWindow()
-            if active_window is not None:
-                new_window_name = active_window.title
-            else:
-                new_window_name = "Unknown"  # Handle as per your application's need
+            # Check if we got a window title, else assign "Unknown"
+            new_window_name = active_window.title if active_window is not None else "Unknown"
             
-            # Checking for inactivity (no activity for more than 5 minutes)
-            if datetime.now() - last_activity_time > timedelta(minutes=5) and active_window_name != "Idle":
-                new_window_name = "Idle"  
-                start_time = last_activity_time + timedelta(minutes=5) 
-            
-            # Checking if the active window has changed or if idle status should be logged
-            if active_window_name != new_window_name or (active_window_name == "Idle" and new_window_name == "Idle"):
+            # Check for inactivity (considered idle if no activity for 5 minutes)
+            if datetime.now() - last_activity_time > timedelta(minutes=5):
+                new_window_name = "Idle"
+                
+            # Check if the active window has changed
+            if active_window_name != new_window_name:
+                # Record the end time of the previous activity
                 end_time = datetime.now()
-                if active_window_name != "":
+                
+                # If the active window name is not an empty string, log the data
+                if active_window_name:  
+                    # Calculate and format the total time spent on the activity
                     total_time = end_time - start_time
                     formatted_total_time = format_timedelta(total_time)
                     readable_total_time = format_readable_timedelta(total_time)
                     
-                    # Appending data to the global data list
+                    # Append the data to the global data list and save it to CSV, then clear the list
                     data.append({
                         "Application": extract_app_name(active_window_name),
                         "Title": active_window_name,
-                        "Start Time": start_time,
-                        "End Time": end_time,
+                        "Start Time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "End Time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
                         "Total Time": formatted_total_time,
                         "Readable Total Time": readable_total_time
                     })
                     
-                    # Saving the data to a CSV file
                     save_to_csv(data, get_csv_filename())
+                    data.clear()
                     
+                    # Update the start time for the next activity
                     start_time = end_time
                 
-                # Updating the active window name if it has changed
-                if active_window_name != new_window_name:
-                    active_window_name = new_window_name
-                
-            # Pausing the loop for 1 second before checking the active window again
+                # Update the active window name
+                active_window_name = new_window_name
+            
+            # Pause the loop for 1 second before checking the active window again
             time.sleep(1)
             
+    # Handle manual interruption gracefully and log the last activity
     except KeyboardInterrupt:
-        # Handling a manual interrupt of the script
         end_time = datetime.now()
-        if active_window_name != "":
+        if active_window_name:
             total_time = end_time - start_time
             formatted_total_time = format_timedelta(total_time)
             readable_total_time = format_readable_timedelta(total_time)
             
-            # Appending the last activity data to the list
             data.append({
                 "Application": extract_app_name(active_window_name),
                 "Title": active_window_name,
-                "Start Time": start_time,
-                "End Time": end_time,
+                "Start Time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "End Time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
                 "Total Time": formatted_total_time,
                 "Readable Total Time": readable_total_time
             })
-
-        # Saving the final data to a CSV file
+            
         save_to_csv(data, get_csv_filename())
         
+    # Log unexpected errors
     except Exception as e:
-        # Logging unexpected errors during window tracking
         logging.error(f"Unexpected error in track_active_window. Error: {str(e)}")
 
 
