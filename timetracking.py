@@ -11,9 +11,8 @@ To run this script, ensure the following Python libraries are installed:
 - threading and time are part of the Python Standard Library.
 
 You can install the necessary libraries using pip:
-pip install pygetwindow pandas pynput
+pip install pygetwindow pandas pynput PyQt5
 """
-
 
 import pygetwindow as gw # Import the pygetwindow library to interact with native windows
 import pandas as pd # Import the pandas library to manage data and write CSV files
@@ -23,6 +22,11 @@ import threading # Import the threading library to run multiple threads concurre
 import time # Import the time library to control the sleep state of the while loop in track_active_window function
 import logging  # Import the logging module
 import os  # Import the os module to handle file paths
+
+#System Tray Icon with PyQt5
+from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction # Import necessary modules from PyQt5 for GUI and system tray functionality
+from PyQt5.QtGui import QIcon # Import QIcon from PyQt5.QtGui to handle icon images
+import sys # Import sys for handling command-line arguments and application exit
 
 
 # Creating directories if they don't exist
@@ -39,6 +43,7 @@ data = []
 active_window_name = ""
 start_time = datetime.now()
 
+exit_threads = False
 
 def save_to_csv(data, filename):
     """
@@ -147,11 +152,14 @@ def track_active_window():
     When the active window changes, it logs the usage data to the global `data` list and writes it to a CSV file.
     It also handles idle time by logging it as "Idle" when no activity is detected for a specified period.
     """
-    global last_activity_time, data, active_window_name, start_time
+    global last_activity_time, data, active_window_name, start_time, exit_threads
     
+    # Initialize thread's do_run attribute to True
+    threading.current_thread().do_run = True
+
     try:
         # Continuous loop to keep the tracking active at all times
-        while True:
+        while not exit_threads:
             # Get the currently active window's title
             active_window = gw.getActiveWindow()
             # Check if we got a window title, else assign "Unknown"
@@ -225,6 +233,52 @@ def on_activity(*args):
     """
     global last_activity_time
     last_activity_time = datetime.now()
+
+
+def create_tray_icon():
+    """
+    Create a QApplication instance to manage the application's GUI
+    """
+
+    app = QApplication(sys.argv)
+    
+    # Create a menu for the tray icon
+    menu = QMenu()
+    
+    # Add an "Exit" action to the tray icon's menu and connect it to the exit_application function
+    exit_action = QAction("Exit", app)
+    exit_action.triggered.connect(exit_application)
+    menu.addAction(exit_action)
+
+    # Provide the full path to the icon image
+    icon_path = os.path.abspath("icon.png")
+    
+    # Create a QSystemTrayIcon and set its icon image and context menu
+    tray_icon = QSystemTrayIcon(QIcon(icon_path), parent=app)
+    tray_icon.setContextMenu(menu)
+    
+    # Show the tray icon
+    tray_icon.show()
+
+    # Execute the application's main loop
+    sys.exit(app.exec_())
+
+
+def exit_application():
+    """
+    Set a global variable to signal the exit of threads
+    """
+
+    global exit_threads
+    exit_threads = True
+    
+    # Quit the application to cleanly exit
+    app.quit()
+
+
+# Additional thread to run the tray icon
+tray_thread = threading.Thread(target=create_tray_icon)
+tray_thread.start()
 
 
 

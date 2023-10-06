@@ -24,12 +24,12 @@ Ensure the following Python libraries are installed:
 
 You can install the necessary libraries using pip:
 ```shell
-pip install pygetwindow pandas pynput
+pip install pygetwindow pandas pynput PyQt5
 ```
 
 To run the script:
 ```shell
-python app_usage_tracker.py
+python timetracking.py
 ```
 
 ## Data Output
